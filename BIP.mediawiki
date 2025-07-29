@@ -1,0 +1,248 @@
+<pre>
+  BIP: // TBD
+  Layer: Applications
+  Title: Bitcoin Encrypted Backup
+  Author: // TBD
+  Comments-Summary: No comments yet.
+  Comments-URI: // TBD
+  Status: Draft
+  Type: Standards Track
+  Created: // TBD
+  License: BSD-2-Clause
+</pre>
+
+==Introduction==
+
+===Abstract===
+
+This specification applies to encrypting '''wallet descriptors''' that contain only '''public keys'''. 
+It is NOT intended for descriptors containing private keys. 
+The encrypted format is intended for long-term offline backup storage, not for interactive processes.
+
+While the design originates from and is optimized for wallet/descriptor backups, the encryption scheme can be applied to any arbitrary data that needs deterministic, public-key-dependent symmetric encryption.
+
+===Copyright===
+
+This BIP is licensed under the 2-clause BSD license.
+
+===Motivation===
+
+In practice, losing the '''wallet descriptor''' (or '''wallet policy''') is often '''as catastrophic as losing the wallet’s seed''' itself.  While the seed grants the ability to sign, the descriptor grants a map to the coins.  In multisig or miniscript contexts, keys alone are '''not sufficient''' for recovery: without the original descriptor the wallet cannot reconstruct the script.
+
+Offline storage of descriptors has two practical obstacles:
+
+1. '''Descriptors are hard to store offline.'''   
+
+The JSON-serialized text can be far longer than a 12/24-word seed phrase.  Paper, steel, and other long-term analog media quickly become impractical for such lengths or error-prone when transcribed.
+
+2. '''Online redundancy carries risk.'''  
+
+Keeping backups on USB thumb-drives, computers, phones, or (worst) cloud drives avoids the first problem but amplifies surveillance risk: anyone who gains these '''plaintext descriptors''' learns the wallet’s public keys, script structure, etc...  Even with encryption at the cloud provider, an attacker or subpoena can compel access; each extra copy multiplies the attack surface.
+
+These constraints lead to an acute need for an '''encrypted, deterministic''', and ideally compact backup format that:
+
+* can be '''safely stored in multiple places''', including untrusted on-line services,  
+* can be '''decrypt only by intended holders''' of specified public keys,  
+* and keeps both '''keys and plaintext''' hidden from any party who lacks the necessary key(s).
+
+In bitcoin signing, the '''seed''' as it is what protects the key material that allows spending funds. 
+Unauthorized access to the seed implies that attackers gain ownership of the funds (or at least the specific access controls that the keys are protecting).
+Hence, it is very valuable for an attacker to gain access to seed, and they will be willing to increase the cost and the sophistication of the attacks, because of the potential of high returns.
+
+Therefore, for seeds:
+
+* '''digital copies are a high risk''': hardware signing devices have been built to keep the seeds in a secure enclave, separate from the machine the software wallet is running on.
+*'''redundant copies of the seed are a high risk''': the seed has to be physically protected, and multiple copies in multiple places inherently make their protection harder.
+
+'''Descriptors''' and  ''Xpubs''' are only private: unauthorized access allows an attacker, to spy on your funds. 
+That is bad, but not nearly as valuable as taking your funds. 
+Attackers might use this to get information about you, and to inform further attacks, but will lose interest once attempting an attack becomes too costly or sophisticate.
+
+For '''descriptors''':
+
+* '''digital copies are unavoidable''': each of parties using the account will necessarily have a digital copy in their software wallet.
+* additional '''redundant copies are a very moderate risk'''.
+
+Therefore, having multiple copies of the descriptor, whether physical, digital, on your disk or on the cloud, is a valid mean to reduce the risk of loss of funds, unlike replicating the seed, which would incur a much higher risk.
+
+===Expected properties===
+
+* '''Encrypted''': this allows to outsource its storage to untrusted parties, for example, cloud providers, specialized services, etc..
+* '''Has access control''': decrypting it should only be available to the desired parties (typically, a subset of the cosigners).
+* '''Easy to implement''': it should not require any sophisticated tools.
+* '''Vendor-independent''': it should be easy to implement using any hardware signing device.
+* '''Deterministic''': the result of the backup is the same for the same payload. Not crucial, but a nice-to-have.
+
+===Scope===
+
+This specification applies to encrypting '''wallet descriptors''' (BIP-0380) or '''wallet policies''' (BIP-0388) that contain only '''public keys''' and any other relevant bitcoin "wallet" metadata. 
+It is NOT intended for descriptors containing private keys, or private keys. 
+The encrypted format is intended for long-term backup storage, not for interactive processes.
+
+==Specification==
+
+===Security considerations===
+
+A deterministic encryption, by definition, cannot satisfy the standard [//https://en.wikipedia.org/wiki/Semantic_security semantic security] property commonly used in cryptography; however, in our context, it is safe to assume that the adversary does not have access to plaintexts, and no other plaintext will be encrypted with the same secrets.
+
+===Secret generation===
+
+The payload data is left unspecified here, the byte <tt>CONTENT</tt> can refer to some external specification. 
+The operator ⊕  refers to the bitwise XOR operation.
+
+* Let <tt>p1</tt>, <tt>p2</tt>, .., <tt>pn</tt> be the public keys in the descriptor/wallet policy, in increasing lexicographical order.
+* let <tt>secret</tt> = sha256("BIPXXXX_DECRYPTION_SECRET" || <tt>p1</tt> || <tt>p2</tt> || ... || <tt>pn</tt> )
+* let <tt>si</tt> = sha256("BIPXXXX_INDIVIDUAL_SECRET" || <tt>pi</tt>)
+* let <tt>individual_secret_i</tt> = <tt>secret</tt> ⊕  <tt>si</tt>
+
+===AES-GCM Encryption===
+
+* let <tt>nonce</tt> = random()
+* let <tt>cyphertext</tt> = aes_gcm_256_encrypt(<tt>payload</tt>, <tt>secret</tt>, <tt>nonce</tt>)
+
+===AES-GCM Decryption===
+In order to decrypt the payload of a backup, the owner of a certain public key <tt>p</tt> computes:
+
+* let <tt>si</tt> = sha256("BIPXXXX_INDIVIDUAL_SECRET" || <tt>p</tt>)
+* for each <tt>individual_secret_i</tt> generate <tt>reconstructed_secret_i</tt> = <tt>individual_secret_i</tt> ⊕ <tt>si</tt>
+* for each <tt>reconstructed_secret_i</tt> process <tt>payload</tt> = aes_gcm_256_decrypt(<tt>cyphertext</tt>, <tt>secret</tt>, <tt>nonce</tt>)
+
+Decryption will succeed if and only if p was one of the keys in the descriptor/wallet policy.
+
+
+===Encoding===
+
+The encrypted backup must be encoded as follow:
+
+ <MAGIC><VERSION><DERIVATION_PATHS><INDIVIDUAL_SECRETS><CONTENT><ENCRYPTION><ENCRYPTED_PAYLOAD>
+
+====Magic====
+
+// TBD: replace by BIP #
+
+<tt>MAGIC</tt>: 7 bytes which are ASCII/UTF-8 representation of <tt>BIPXXXX</tt>: <tt><0x42, 0x49, 0x50, _, _, _, _></tt>
+
+====Version====
+
+<tt>VERSION</tt>: 1 byte unsigned integer representing the format version. the current specification define the version <tt>0x01</tt>.
+
+====Derivation Paths====
+
+Derivation paths are optionals, they can be useful to simplify the recovery process if one have use a non-common derivation path to derive his key.
+
+<tt>DERIVATION_PATH</tt> will follow this format:
+
+ <COUNT>
+ <CHILD_COUNT><CHILD><..><CHILD>
+ <..>
+ <CHILD_COUNT><CHILD><..><CHILD>
+
+where:
+
+<tt>COUNT</tt>: 1 byte unsigned integer value representing how many derivations path are contained in this set.
+
+Note: <tt>COUNT</tt> MUST be between 0 and 255, as empty vector is allowed.
+
+<tt>CHILD_COUNT</tt>: 1 byte unsigned integer value representing how many childs are contained in the current derivation path.
+
+Note: <tt>CHILD_COUNT</tt> MUST be between 1 and 255, as empty vector is NOT allowed.
+
+<tt>CHILD</tt>: 4 bytes unsigned integer, most significant bit first, representing a child number/index as defined in [https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki BIP-0032].
+
+====Individual Secrets====
+
+At least one individual secret must be supplied.
+
+<tt>DERIVATION_SECRETS</tt> will follow his format:
+
+ <COUNT>
+ <INDIVIDUAL_SECRET>
+ <..>
+ <INDIVIDUAL_SECRET>
+
+where:
+
+<tt>COUNT</tt>: 1 byte unsigned integer value representing how many secrets are contained in this set.
+
+Note: <tt>COUNT</tt> MUST be between 1 and 255, as empty vector is NOT allowed.
+
+<tt>INDIVIDUAL_SECRET</tt>: 32 bytes serialisation of the individual secret as defined previously.
+
+====Content====
+
+<tt>CONTENT</tt>: 1 byte unsigned integer to identify which kind of values have been encrypted, current defined values are:
+
+{|
+| Value 
+| Definition
+|-
+| 0x00 
+| Undefined
+|-
+| 0x01 
+| BIP-0380 Descriptor (as string)
+|-
+| 0x02 
+| BIP-0388 Wallet policy (as string)
+|-
+| 0x03 
+| BIP-0329 Labels (as JSONL)
+|-
+| 0x04 
+| Wallet backup (as JSON)
+|}
+
+====Encrypted Payload====
+
+
+<tt>ENCRYPTED_PAYLOAD</tt> will follow his format:
+
+ <TYPE><NONCE><LENGTH><CYPHERTEXT>
+
+where:
+
+<tt>TYPE</tt>: 1 byte unsigned integer to identify which algorythm is used for encryption,
+current defined values are:
+
+
+{|
+| Value 
+| Definition
+|-
+| 0x00 
+| Undefined
+|-
+| 0x01 
+| AES-GCM256
+|}
+
+
+<tt>NONCE</tt>: 12 bytes nonce used in AES-GCM256 encryption protocol.
+
+<tt>LENGTH</tt>: a [https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer compact size] integer representing the cypher text length.
+
+<tt>CYPHERTEXT</tt>: the variable length cyphertext produced by the encryption algorythm defined in <tt>TYPE</tt>.
+
+==Rationale==
+
+// TBD
+
+===Future Extensions===
+
+Version field enables possible future enhancements:
+
+- Additional encryption algorithms
+- Support for threshold-based decryption
+
+===Implementation===
+
+// TBD
+
+===Test Vectors===
+
+// TBD
+
+
+==Acknowledgements==
+
+// TBD
