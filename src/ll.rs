@@ -317,6 +317,8 @@ pub fn extract_paths(
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::hex::DisplayHex;
+
     use super::*;
     use std::str::FromStr;
 
@@ -337,6 +339,8 @@ mod tests {
         let keys = vec![pk2, pk1];
         let data = "test".as_bytes().to_vec();
         let encrypted = encrypt(keys, data, vec![]).unwrap();
+
+        println!("{:?}", encrypted.as_hex());
 
         let (_, deriv_paths) = extract_paths(&encrypted).unwrap();
         assert!(deriv_paths.is_empty());
