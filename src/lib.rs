@@ -30,6 +30,14 @@ pub enum Error {
     Utf8,
     Descriptor,
     NotImplemented,
+    CantConvertToDescriptor(miniscript::Error),
+    CantConvertToXpub(miniscript::bitcoin::bip32::Error),
+    EmptyDescriptor,
+    CwdError(std::io::Error),
+    CreateError(std::io::Error),
+    OpenError(std::io::Error),
+    WriteError(std::io::Error),
+    ReadError(std::io::Error),
 }
 
 fn dpk_to_pk(key: &DescriptorPublicKey) -> bitcoin::secp256k1::PublicKey {
