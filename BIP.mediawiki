@@ -1,7 +1,7 @@
 <pre>
   BIP: // TBD
   Layer: Applications
-  Title: Bitcoin Backup Format
+  Title: Bitcoin Encrypted Backup
   Author: // TBD
   Comments-Summary: No comments yet.
   Comments-URI: // TBD
@@ -179,7 +179,7 @@ Note: <tt>COUNT</tt> MUST be between 1 and 255, as empty vector is NOT allowed.
 
 <tt>ENCRYPTED_PAYLOAD</tt> will follow his format:
 
- <TYPE><LENGTH><CYPHERTEXT>
+ <TYPE><NONCE><LENGTH><CYPHERTEXT>
 
 where:
 
@@ -193,7 +193,7 @@ current defined values are:
 |-
 | 0x00 
 | Undefined
-|-
+|
 | 0x01 
 | AES-GCM
 |}
