@@ -193,7 +193,7 @@ current defined values are:
 |-
 | 0x00 
 | Undefined
-|
+|-
 | 0x01 
 | AES-GCM
 |}
