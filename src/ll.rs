@@ -18,12 +18,38 @@ const MAGIC: &str = "BIPXXXX";
 const VERSION: u8 = 0x00;
 const AESGCM256: u8 = 0x01;
 
+/// Requirement for AEAD alogirithm specification, section 4.
+/// This corresponds with the "The value of P_MAX MUST be
+/// larger than zero, and SHOULD be at least 65,536 (2^16) octets".
+///
+/// Reference: https://www.rfc-editor.org/rfc/rfc5116#section-4
+const MIN_AES_GCM_P_LEN: usize = 1 << 16;
+
+#[cfg(target_pointer_width = "64")]
+/// Maximum plaintext length for AES-256-GCM, as specified in
+/// the RFC 5116, section 5.2
+///
+/// This corresponds to `P_MAX = 2^36 - 31` bytes, the maximum plaintext size
+/// allowed for AES-GCM encryption (excluding the 16-byte tag).
+///
+/// References: <https://www.rfc-editor.org/rfc/rfc5116#section-5>
+const MAX_AES_GCM_P_LEN: usize = (1 << 36) - 31;
+
+#[cfg(target_pointer_width = "32")]
+/// Maximum plaintext length for AES-256-GCM, as specified in
+/// the RFC 5116, section 5.2, but for systems with max integer
+/// 32 bits representation
+///
+/// References: <https://www.rfc-editor.org/rfc/rfc5116#section-5>
+const MAX_AES_GCM_P_LEN: usize = std::u32::MAX;
+
 #[derive(Debug)]
 pub enum Error {
     KeyCount,
     DerivPathCount,
     DerivPathLength,
     DerivPathEmpty,
+    MinimumDataLength,
     DataLength,
     Encrypt,
     Decrypt,
@@ -275,10 +301,15 @@ pub fn encrypt_aes_gcm_256(
     if derivation_paths.len() > u8::MAX as usize {
         return Err(Error::DerivPathCount);
     }
-    // FIXME: should we stick a u32::MAX as 32bits systems usize is 32 bits?
-    if data.len() > u64::MAX as usize {
-        // TODO: check the max data length in aes-gcm
-        return Err(Error::DataLength);
+    // Minimum and Maximum AES-256-GCM plaintext length
+    // RFC 5116 sections 4 states that the minimum is 2^16
+    // and 5.1/5.2 allows 2^36−31 (bigger than u32::MAX),
+    // but for 32-bit compatibility we could limit to u32::MAX.
+    // Also, we hardly will have plaintext that exceeds u32::MAX (~4GB).
+    match data.len() {
+        MIN_AES_GCM_P_LEN => return Err(Error::MinimumDataLength),
+        MAX_AES_GCM_P_LEN => return Err(Error::DataLength),
+        _ => {}
     }
 
     let mut raw_keys = keys.into_iter().map(|k| k.serialize()).collect::<Vec<_>>();
