@@ -1,16 +1,13 @@
 use clap::Parser;
 use clap::Subcommand;
 
-use encrypted_backup::Error;
-use encrypted_backup::decrypt;
-use encrypted_backup::encrypt;
-
+use encrypted_backup::Decrypted;
+use encrypted_backup::EncryptedBackup;
 use miniscript::Descriptor;
 use miniscript::DescriptorPublicKey;
-use miniscript::bitcoin::bip32::Xpub;
+use miniscript::descriptor::DescriptorKeyParseError;
 
 use std::env;
-use std::fmt::write;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -27,7 +24,7 @@ struct Cli {
 #[derive(Debug)]
 pub enum CliError {
     CantConvertToDescriptor(miniscript::Error),
-    CantConvertToXpub(miniscript::bitcoin::bip32::Error),
+    CantConvertToXpub(DescriptorKeyParseError),
     EmptyDescriptor,
     CwdError(std::io::Error),
     CreateError(std::io::Error),
@@ -36,6 +33,7 @@ pub enum CliError {
     ReadError(std::io::Error),
     FailedToEncrypt(encrypted_backup::Error),
     FailedToDecrypt(encrypted_backup::Error),
+    Content,
 }
 
 impl std::fmt::Display for CliError {
@@ -55,6 +53,7 @@ impl std::fmt::Display for CliError {
             CliError::ReadError(err) => write!(f, "Cannot read file: {err:?}"),
             CliError::FailedToEncrypt(err) => write!(f, "Cannot encrypt: {err:?}"),
             CliError::FailedToDecrypt(err) => write!(f, "Cannot decrypt: {err:?}"),
+            CliError::Content => write!(f, "Decryption succeed but content is not a descriptor"),
         }
     }
 }
@@ -123,15 +122,19 @@ fn main() -> Result<(), CliError> {
             let data = fs::read_to_string(&input_path).map_err(CliError::ReadError)?;
 
             // The read descritor need to be readed with a trimmed white space
-            let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&data.trim())
+            let descriptor = Descriptor::<DescriptorPublicKey>::from_str(data.trim())
                 .map_err(CliError::CantConvertToDescriptor)?;
 
             // encrypt the descriptor
-            let encrypted = encrypt(descriptor).map_err(CliError::FailedToEncrypt)?;
+            let bytes = EncryptedBackup::new()
+                .set_payload(&descriptor)
+                .map_err(CliError::FailedToEncrypt)?
+                .encrypt()
+                .map_err(CliError::FailedToEncrypt)?;
 
             // pass the byte vector to a file
             let mut output = File::create(&output_path).map_err(CliError::CreateError)?;
-            output.write(&encrypted).map_err(CliError::WriteError)?;
+            output.write(&bytes).map_err(CliError::WriteError)?;
             println!("descriptor written to {output_path:?}");
         }
         Commands::Decrypt { file, key, output } => {
@@ -176,11 +179,23 @@ fn main() -> Result<(), CliError> {
 
             let data = fs::read(&input_path).map_err(CliError::ReadError)?;
             let key = fs::read_to_string(key_path).map_err(CliError::ReadError)?;
-            let xpub = Xpub::from_str(key.trim()).map_err(CliError::CantConvertToXpub)?;
-            let decrypted = decrypt(xpub, data)
+            let xpub =
+                DescriptorPublicKey::from_str(key.trim()).map_err(CliError::CantConvertToXpub)?;
+            let (pks, _) =
+                encrypted_backup::descriptor::dpks_to_derivation_keys_paths(&vec![xpub.clone()]);
+            let pk = pks.first().expect("must not fail");
+            let decrypted = EncryptedBackup::new()
+                .set_keys(vec![*pk])
+                .set_encrypted_payload(&data)
                 .map_err(CliError::FailedToDecrypt)?
-                .to_string();
-            fs::write(&output_path, &decrypted).map_err(CliError::WriteError)?;
+                .decrypt()
+                .map_err(CliError::FailedToDecrypt)?;
+            let descriptor = if let Decrypted::Descriptor(descr) = decrypted {
+                descr.to_string()
+            } else {
+                return Err(CliError::Content);
+            };
+            fs::write(&output_path, &descriptor).map_err(CliError::WriteError)?;
             println!("descriptor written to {output_path:?}");
         }
     }

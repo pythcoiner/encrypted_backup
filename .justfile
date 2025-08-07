@@ -1,3 +1,5 @@
+build:
+    cargo build --release && sudo cp target/release/beb /usr/bin/beb
 testcov:
     just clean
     RUSTFLAGS="-C instrument-coverage" cargo test --tests
