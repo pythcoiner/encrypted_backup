@@ -34,6 +34,7 @@ pub enum CliError {
     FailedToEncrypt(encrypted_backup::Error),
     FailedToDecrypt(encrypted_backup::Error),
     Content,
+    NoKeys,
 }
 
 impl std::fmt::Display for CliError {
@@ -54,6 +55,7 @@ impl std::fmt::Display for CliError {
             CliError::FailedToEncrypt(err) => write!(f, "Cannot encrypt: {err:?}"),
             CliError::FailedToDecrypt(err) => write!(f, "Cannot decrypt: {err:?}"),
             CliError::Content => write!(f, "Decryption succeed but content is not a descriptor"),
+            CliError::NoKeys => write!(f, "No decryption key found"),
         }
     }
 }
@@ -87,7 +89,8 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), CliError> {
+#[tokio::main]
+async fn main() -> Result<(), CliError> {
     let cli = Cli::parse();
 
     // Handle the specific subcommand
@@ -176,20 +179,35 @@ fn main() -> Result<(), CliError> {
                     xpub_path
                 }
             };
+            let key = if let Ok(k) = fs::read_to_string(key_path) {
+                DescriptorPublicKey::from_str(k.trim()).ok()
+            } else {
+                None
+            };
 
             let data = fs::read(&input_path).map_err(CliError::ReadError)?;
-            let key = fs::read_to_string(key_path).map_err(CliError::ReadError)?;
-            let xpub =
-                DescriptorPublicKey::from_str(key.trim()).map_err(CliError::CantConvertToXpub)?;
-            let (pks, _) =
-                encrypted_backup::descriptor::dpks_to_derivation_keys_paths(&vec![xpub.clone()]);
-            let pk = pks.first().expect("must not fail");
-            let decrypted = EncryptedBackup::new()
-                .set_keys(vec![*pk])
+
+            let backup = EncryptedBackup::new()
                 .set_encrypted_payload(&data)
-                .map_err(CliError::FailedToDecrypt)?
+                .map_err(CliError::FailedToDecrypt)?;
+            let deriv_paths = backup.get_derivation_paths();
+
+            let mut keys = encrypted_backup::signing_devices::collect_xpubs(deriv_paths).await;
+            if let Some(k) = key {
+                keys.push(k);
+            }
+
+            if keys.is_empty() {
+                return Err(CliError::NoKeys);
+            }
+
+            let (pks, _) = encrypted_backup::descriptor::dpks_to_derivation_keys_paths(&keys);
+
+            let decrypted = backup
+                .set_keys(pks)
                 .decrypt()
                 .map_err(CliError::FailedToDecrypt)?;
+
             let descriptor = if let Decrypted::Descriptor(descr) = decrypted {
                 descr.to_string()
             } else {

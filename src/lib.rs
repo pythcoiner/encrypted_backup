@@ -10,6 +10,7 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 pub mod descriptor;
 pub mod ll;
 pub use miniscript;
+pub mod signing_devices;
 
 pub trait ToPayload {
     fn to_payload(&self) -> Result<Vec<u8>, Error>;
