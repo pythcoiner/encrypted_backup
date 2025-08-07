@@ -294,9 +294,11 @@ pub fn encrypt_aes_gcm_256_v1(
     if derivation_paths.len() > u8::MAX as usize {
         return Err(Error::DerivPathCount);
     }
-    // FIXME: should we stick a u32::MAX as 32bits systems usize is 32 bits?
-    if data.len() > u64::MAX as usize {
-        // TODO: check the max data length in aes-gcm
+    // NOTE:  RFC5116 define the max length of the plaintext to 2^36 - 31
+    // but for convenience we limit it to u32::MAX in order to not exceed
+    // usize::MAX on 32 bits architectures
+    // https://datatracker.ietf.org/doc/html/rfc5116#section-5.1
+    if data.len() > u32::MAX as usize {
         return Err(Error::DataLength);
     }
     if data.is_empty() {
