@@ -1,16 +1,20 @@
 use async_hwi::{
-    HWI,
-    bitbox::{BitBox02, PairingBitbox02WithLocalCache, api::runtime},
+    bitbox::{api::runtime, BitBox02, PairingBitbox02WithLocalCache},
     coldcard,
     jade::{self, Jade},
     ledger::{HidApi, Ledger, LedgerSimulator, TransportHID},
     specter::{Specter, SpecterSimulator},
+    HWI,
 };
 use miniscript::{
-    DescriptorPublicKey,
-    bitcoin::{Network, bip32::DerivationPath},
+    bitcoin::{bip32::DerivationPath, Network},
     descriptor::{DescriptorXKey, Wildcard},
+    DescriptorPublicKey,
 };
+#[cfg(feature = "miniscript_12_0")]
+pub use mscript_12_0 as miniscript;
+#[cfg(feature = "miniscript_12_3_5")]
+pub use mscript_12_3_5 as miniscript;
 use std::{collections::BTreeSet, error::Error};
 
 pub async fn collect_xpubs(deriv_paths: Vec<DerivationPath>) -> Vec<DescriptorPublicKey> {

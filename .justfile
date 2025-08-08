@@ -1,5 +1,5 @@
 build:
-    cargo build --release --features miniscript_latest && sudo cp target/release/beb /usr/bin/beb
+    cargo build --release --features "cli miniscript_latest" && sudo cp target/release/beb /usr/bin/beb
 clippy: 
     cargo clippy --features miniscript_latest
 testcov:
