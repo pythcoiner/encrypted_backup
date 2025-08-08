@@ -1,11 +1,16 @@
+#[cfg(feature = "miniscript_12_0")]
+pub use mscript_12_0 as miniscript;
+#[cfg(feature = "miniscript_12_3_5")]
+pub use mscript_12_3_5 as miniscript;
+
 use clap::Parser;
 use clap::Subcommand;
 
 use encrypted_backup::Decrypted;
 use encrypted_backup::EncryptedBackup;
+use miniscript::descriptor::DescriptorKeyParseError;
 use miniscript::Descriptor;
 use miniscript::DescriptorPublicKey;
-use miniscript::descriptor::DescriptorKeyParseError;
 
 use std::env;
 use std::fs;
