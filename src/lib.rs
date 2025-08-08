@@ -1,15 +1,27 @@
 use std::str::FromStr;
 
 use descriptor::descr_to_dpks;
+
 use miniscript::{
-    Descriptor, DescriptorPublicKey,
     bitcoin::{bip32::DerivationPath, secp256k1},
+    Descriptor, DescriptorPublicKey,
 };
+
+#[cfg(all(feature = "miniscript_12_0", feature = "miniscript_12_3_5"))]
+compile_error!("A single miniscript version must be selected");
+
+#[cfg(not(any(feature = "miniscript_12_0", feature = "miniscript_12_3_5")))]
+compile_error!("A miniscript version must be selected with feature flag");
+
+#[cfg(feature = "miniscript_12_0")]
+pub use mscript_12_0 as miniscript;
+#[cfg(feature = "miniscript_12_3_5")]
+pub use mscript_12_3_5 as miniscript;
+
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 pub mod descriptor;
 pub mod ll;
-pub use miniscript;
 #[cfg(feature = "devices")]
 pub mod signing_devices;
 

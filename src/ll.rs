@@ -1,16 +1,21 @@
+#[cfg(feature = "miniscript_12_0")]
+pub use mscript_12_0 as miniscript;
+#[cfg(feature = "miniscript_12_3_5")]
+pub use mscript_12_3_5 as miniscript;
+
 use std::collections::BTreeSet;
 
 use aes_gcm::{
-    Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit},
+    Aes256Gcm, Key, Nonce,
 };
 use miniscript::bitcoin::{
-    self, VarInt,
+    self,
     bip32::{ChildNumber, DerivationPath},
-    hashes::{Hash, HashEngine, sha256},
-    secp256k1,
+    hashes::{sha256, Hash, HashEngine},
+    secp256k1, VarInt,
 };
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{rngs::OsRng, TryRngCore};
 
 use crate::{Encryption, Version};
 
@@ -505,7 +510,7 @@ pub fn parse_encrypted_payload(
 
 #[cfg(test)]
 mod tests {
-    use aes_gcm::aead::{OsRng, rand_core::RngCore};
+    use aes_gcm::aead::{rand_core::RngCore, OsRng};
 
     use super::*;
     use std::str::FromStr;
