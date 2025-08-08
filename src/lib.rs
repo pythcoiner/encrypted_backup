@@ -10,6 +10,7 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 pub mod descriptor;
 pub mod ll;
 pub use miniscript;
+#[cfg(feature = "devices")]
 pub mod signing_devices;
 
 pub trait ToPayload {

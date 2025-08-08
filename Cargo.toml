@@ -5,13 +5,22 @@ edition = "2024"
 
 [dependencies]
 aes-gcm = "0.10.3"
-async-hwi = "0.0.29"
-clap = { version = "4.5.42", features = ["derive"] }
 miniscript = { version = "12.3.4", features = ["serde"] }
 num_enum = "0.7.4"
 rand = "0.9.2"
-tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "io-util", "sync"] }
+
+# devices
+async-hwi = {version = "0.0.29", optional = true}
+
+# cli
+clap = { version = "4.5.42", features = ["derive"] , optional = true}
+tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "io-util", "sync"], optional = true}
 
 [[bin]]
 name = "beb"
 path = "src/bin/main.rs"
+required-features = ["cli"]
+
+[features]
+devices = ["dep:async-hwi"]
+cli = ["dep:clap", "dep:tokio", "devices"]
