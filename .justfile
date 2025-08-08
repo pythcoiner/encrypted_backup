@@ -17,13 +17,13 @@ showcov:
     --object "target/debug/deps/$(ls target/debug/deps | grep encrypted_backup | head -n 1)"
 
 fuzz:
-    RUSTFLAGS="-C instrument-coverage" cargo fuzz run encode
+    RUSTFLAGS="-C instrument-coverage" cargo fuzz run $F_TARGET
 
 fcov:
-    RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage encode
+    RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage $F_TARGET
     just freport
 freport:
-    sh ./fuzz/report.sh encode
+    sh ./fuzz/report.sh $F_TARGET
 
 
 clean:
