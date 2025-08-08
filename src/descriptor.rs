@@ -1,9 +1,13 @@
-use miniscript::{ForEachKey, bitcoin::secp256k1};
+#[cfg(feature = "miniscript_12_0")]
+pub use mscript_12_0 as miniscript;
+#[cfg(feature = "miniscript_12_3_5")]
+pub use mscript_12_3_5 as miniscript;
+
 use std::collections::{BTreeSet, HashSet};
 
 use miniscript::{
-    Descriptor, DescriptorPublicKey,
-    bitcoin::{self, bip32::DerivationPath},
+    bitcoin::{self, bip32::DerivationPath, secp256k1},
+    Descriptor, DescriptorPublicKey, ForEachKey,
 };
 
 use crate::Error;
