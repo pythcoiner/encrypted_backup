@@ -313,7 +313,7 @@ impl Version {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Error {
     Ll(ll::Error),
     Utf8,
@@ -326,6 +326,7 @@ pub enum Error {
     UnknownVersion,
     WrongKey,
     DescriptorHasNoKeys,
+    String(Box<String>),
 }
 
 impl From<ll::Error> for Error {
