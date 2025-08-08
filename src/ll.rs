@@ -14,9 +14,9 @@ use rand::{TryRngCore, rngs::OsRng};
 
 use crate::{Encryption, Version};
 
-const DECRYPTION_SECRET: &str = "BIPXXXX_DECRYPTION_SECRET";
-const INDIVIDUAL_SECRET: &str = "BIPXXXX_INDIVIDUAL_SECRET";
-const MAGIC: &str = "BIPXXXX";
+const DECRYPTION_SECRET: &str = "BACKUP_DECRYPTION_SECRET";
+const INDIVIDUAL_SECRET: &str = "BACKUP_INDIVIDUAL_SECRET";
+const MAGIC: &str = "BACKUP";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -317,7 +317,7 @@ pub fn encrypt_aes_gcm_256_v1(
     let encrypted_payload = encode_encrypted_payload(nonce, cyphertext.as_slice())?;
 
     Ok(encode_v1(
-        Version::V1.into(),
+        Version::V0.into(),
         derivation_paths,
         individual_secrets,
         content,
@@ -588,8 +588,8 @@ mod tests {
 
     #[test]
     fn test_parse_magic() {
-        let magic = "BIPXXXX".as_bytes();
-        assert_eq!(MAGIC, "BIPXXXX");
+        let magic = "BACKUP".as_bytes();
+        assert_eq!(MAGIC, "BACKUP");
         let offset = parse_magic_byte(magic).unwrap();
         assert_eq!(offset, magic.len());
         let res = parse_magic_byte("BOPXXXX".as_bytes());

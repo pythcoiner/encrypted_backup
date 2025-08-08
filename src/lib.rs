@@ -167,7 +167,7 @@ impl EncryptedBackup {
         };
 
         match (self.encryption, self.version) {
-            (Encryption::AesGcm256, Version::V0 | Version::V1) => Ok(ll::encrypt_aes_gcm_256_v1(
+            (Encryption::AesGcm256, Version::V0) => Ok(ll::encrypt_aes_gcm_256_v1(
                 self.derivation_paths,
                 self.content.into(),
                 self.keys,
@@ -179,7 +179,7 @@ impl EncryptedBackup {
     pub fn set_encrypted_payload(mut self, bytes: &[u8]) -> Result<Self, Error> {
         let version: Version = ll::decode_version(bytes).map(|v| v.into())?;
         match version {
-            Version::V0 | Version::V1 => {
+            Version::V0 => {
                 let (
                     derivation_paths,
                     individual_secrets,
@@ -216,7 +216,7 @@ impl EncryptedBackup {
     }
     pub fn decrypt(&self) -> Result<Decrypted, Error> {
         match self.version {
-            Version::V0 | Version::V1 => match &self.payload {
+            Version::V0 => match &self.payload {
                 Payload::None | Payload::Encrypt { .. } => Err(Error::WrongPayload),
                 Payload::DecryptV1 {
                     cyphertext,
@@ -284,19 +284,19 @@ impl Encryption {
 #[repr(u8)]
 pub enum Version {
     V0,
-    V1,
+    // V1,
     #[num_enum(default)]
     Unknown = 0xFF,
 }
 
 impl Version {
     fn max() -> Self {
-        Version::V1
+        Version::V0
     }
     pub fn is_valid(&self) -> bool {
         match self {
             Version::Unknown => false,
-            Version::V0 | Version::V1 => true,
+            Version::V0 => true,
         }
     }
 }
@@ -416,7 +416,7 @@ mod tests {
         let mut v: Version = 0x00u8.into();
         assert_eq!(v, Version::V0);
         v = 0x01u8.into();
-        assert_eq!(v, Version::V1);
+        assert_eq!(v, Version::Unknown);
 
         for i in 0x02..0xFFu8 {
             v = i.into();
