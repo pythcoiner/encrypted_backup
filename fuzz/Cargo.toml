@@ -26,3 +26,24 @@ path = "fuzz_targets/encode.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_deriv_paths"
+path = "fuzz_targets/parse_deriv_paths.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_individual_secrets"
+path = "fuzz_targets/parse_individual_secrets.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_encrypted_payload"
+path = "fuzz_targets/parse_encrypted_payload.rs"
+test = false
+doc = false
+bench = false
