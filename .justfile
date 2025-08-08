@@ -1,5 +1,7 @@
 build:
-    cargo build --release && sudo cp target/release/beb /usr/bin/beb
+    cargo build --release --features miniscript_latest && sudo cp target/release/beb /usr/bin/beb
+clippy: 
+    cargo clippy --features miniscript_latest
 testcov:
     just clean
     RUSTFLAGS="-C instrument-coverage" cargo test --tests
