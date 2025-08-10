@@ -12,7 +12,7 @@ use miniscript::{
 
 use crate::Error;
 
-fn dpk_to_pk(key: &DescriptorPublicKey) -> bitcoin::secp256k1::PublicKey {
+pub fn dpk_to_pk(key: &DescriptorPublicKey) -> bitcoin::secp256k1::PublicKey {
     match key {
         DescriptorPublicKey::Single(key) => match key.key {
             miniscript::descriptor::SinglePubKey::FullKey(pk) => pk.inner,
