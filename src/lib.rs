@@ -13,6 +13,9 @@ compile_error!("A single miniscript version must be selected");
 #[cfg(not(any(feature = "miniscript_12_0", feature = "miniscript_12_3_5")))]
 compile_error!("A miniscript version must be selected with feature flag");
 
+#[cfg(feature = "tokio")]
+pub use tokio;
+
 #[cfg(feature = "miniscript_12_0")]
 pub use mscript_12_0 as miniscript;
 #[cfg(feature = "miniscript_12_3_5")]
