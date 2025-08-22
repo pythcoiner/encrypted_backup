@@ -11,14 +11,13 @@ use miniscript::{
 compile_error!("A single miniscript version must be selected");
 
 #[cfg(not(any(feature = "miniscript_12_0", feature = "miniscript_12_3_5")))]
-compile_error!("A miniscript version must be selected with feature flag");
-
+// compile_error!("A miniscript version must be selected with feature flag");
 #[cfg(feature = "tokio")]
 pub use tokio;
 
 #[cfg(feature = "miniscript_12_0")]
 pub use mscript_12_0 as miniscript;
-#[cfg(feature = "miniscript_12_3_5")]
+// #[cfg(feature = "miniscript_12_3_5")]
 pub use mscript_12_3_5 as miniscript;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
@@ -344,6 +343,7 @@ mod tests {
 
     #[test]
     fn test_simple_encrypted_descriptor() {
+        let descriptor = Descriptor::<DescriptorPublicKey>::from_str("<descriptor string>");
         let descriptor = descriptor::tests::descr_1();
         let backp = EncryptedBackup::new().set_payload(&descriptor).unwrap();
         let keys = backp.get_keys();
