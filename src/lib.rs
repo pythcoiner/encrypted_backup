@@ -113,7 +113,7 @@ pub struct EncryptedBackup {
 impl Default for EncryptedBackup {
     fn default() -> Self {
         Self {
-            version: Version::max(),
+            version: Version::V0,
             content: Content::Unknown,
             encryption: Encryption::AesGcm256,
             derivation_paths: vec![],
