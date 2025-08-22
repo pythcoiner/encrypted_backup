@@ -91,8 +91,8 @@ The payload data is left unspecified here, the byte <tt>CONTENT</tt> can refer t
 The operator ⊕  refers to the bitwise XOR operation.
 
 * Let <tt>p1</tt>, <tt>p2</tt>, .., <tt>pn</tt> be the public keys in the descriptor/wallet policy, in increasing lexicographical order.
-* let <tt>secret</tt> = sha256("BIPXXXX_DECRYPTION_SECRET" || <tt>p1</tt> || <tt>p2</tt> || ... || <tt>pn</tt> )
-* let <tt>si</tt> = sha256("BIPXXXX_INDIVIDUAL_SECRET" || <tt>pi</tt>)
+* let <tt>secret</tt> = sha256("BEB_DECRYPTION_SECRET" || <tt>p1</tt> || <tt>p2</tt> || ... || <tt>pn</tt> )
+* let <tt>si</tt> = sha256("BEB_INDIVIDUAL_SECRET" || <tt>pi</tt>)
 * let <tt>individual_secret_i</tt> = <tt>secret</tt> ⊕  <tt>si</tt>
 
 ===AES-GCM Encryption===
@@ -103,7 +103,7 @@ The operator ⊕  refers to the bitwise XOR operation.
 ===AES-GCM Decryption===
 In order to decrypt the payload of a backup, the owner of a certain public key <tt>p</tt> computes:
 
-* let <tt>si</tt> = sha256("BIPXXXX_INDIVIDUAL_SECRET" || <tt>p</tt>)
+* let <tt>si</tt> = sha256("BEB_INDIVIDUAL_SECRET" || <tt>p</tt>)
 * for each <tt>individual_secret_i</tt> generate <tt>reconstructed_secret_i</tt> = <tt>individual_secret_i</tt> ⊕ <tt>si</tt>
 * for each <tt>reconstructed_secret_i</tt> process <tt>payload</tt> = aes_gcm_256_decrypt(<tt>cyphertext</tt>, <tt>secret</tt>, <tt>nonce</tt>)
 
@@ -118,9 +118,7 @@ The encrypted backup must be encoded as follow:
 
 ====Magic====
 
-// TBD: replace by BIP #
-
-<tt>MAGIC</tt>: 7 bytes which are ASCII/UTF-8 representation of <tt>BIPXXXX</tt>: <tt><0x42, 0x49, 0x50, _, _, _, _></tt>
+<tt>MAGIC</tt>: 7 bytes which are ASCII/UTF-8 representation of <tt>BEB</tt>: <tt><0x42, 0x45, 0x42, _, _, _, _></tt>
 
 ====Version====
 

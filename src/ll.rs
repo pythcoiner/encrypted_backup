@@ -19,9 +19,9 @@ use rand::{rngs::OsRng, TryRngCore};
 
 use crate::{Encryption, Version};
 
-const DECRYPTION_SECRET: &str = "BIPXXXX_DECRYPTION_SECRET";
-const INDIVIDUAL_SECRET: &str = "BIPXXXX_INDIVIDUAL_SECRET";
-const MAGIC: &str = "BIPXXXX";
+const DECRYPTION_SECRET: &str = "BEB_BACKUP_DECRYPTION_SECRET";
+const INDIVIDUAL_SECRET: &str = "BEB_BACKUP_INDIVIDUAL_SECRET";
+const MAGIC: &str = "BEB";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -547,15 +547,6 @@ mod tests {
         let _ = decode_v1(&bytes);
     }
 
-    // #[test]
-    // fn test_fuzz_catch_2() {
-    //     let bytes = [
-    //         66, 73, 80, 88, 88, 88, 88, 1, 0, 1, 65, 93, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    //         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48,
-    //     ];
-    //     decode_v1(&bytes).unwrap();
-    // }
-
     #[test]
     fn test_nonce() {
         let nonce_1 = nonce();
@@ -593,11 +584,11 @@ mod tests {
 
     #[test]
     fn test_parse_magic() {
-        let magic = "BIPXXXX".as_bytes();
-        assert_eq!(MAGIC, "BIPXXXX");
+        let magic = "BEB".as_bytes();
+        assert_eq!(MAGIC, "BEB");
         let offset = parse_magic_byte(magic).unwrap();
         assert_eq!(offset, magic.len());
-        let res = parse_magic_byte("BOPXXXX".as_bytes());
+        let res = parse_magic_byte("BOBt s".as_bytes());
         assert_eq!(res, Err(Error::Magic));
         let _ = parse_magic_byte(MAGIC.as_bytes()).unwrap();
     }
