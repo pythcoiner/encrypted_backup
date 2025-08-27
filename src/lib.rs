@@ -11,13 +11,13 @@ use miniscript::{
 compile_error!("A single miniscript version must be selected");
 
 #[cfg(not(any(feature = "miniscript_12_0", feature = "miniscript_12_3_5")))]
-// compile_error!("A miniscript version must be selected with feature flag");
+compile_error!("A miniscript version must be selected with feature flag");
 #[cfg(feature = "tokio")]
 pub use tokio;
 
 #[cfg(feature = "miniscript_12_0")]
 pub use mscript_12_0 as miniscript;
-// #[cfg(feature = "miniscript_12_3_5")]
+#[cfg(feature = "miniscript_12_3_5")]
 pub use mscript_12_3_5 as miniscript;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
@@ -77,7 +77,7 @@ pub enum Decrypted {
     Policy,
     Labels,
     WalletBackup,
-    Raw(Box<Vec<u8>>),
+    Raw(Vec<u8>),
 }
 
 #[derive(Debug)]
@@ -217,7 +217,7 @@ impl EncryptedBackup {
     }
     pub fn extract(content: Content, bytes: Vec<u8>) -> Result<Decrypted, Error> {
         match content {
-            Content::Undefined => Ok(Decrypted::Raw(Box::new(bytes))),
+            Content::Undefined => Ok(Decrypted::Raw(bytes)),
             Content::Bip380 => {
                 let descr_str = String::from_utf8(bytes).map_err(|_| Error::Utf8)?;
                 let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&descr_str)
