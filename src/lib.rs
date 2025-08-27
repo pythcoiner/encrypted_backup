@@ -76,7 +76,7 @@ pub enum Decrypted {
     Descriptor(Descriptor<DescriptorPublicKey>),
     Policy,
     Labels,
-    WalletBackup,
+    WalletBackup(Vec<u8>),
     Raw(Vec<u8>),
 }
 
@@ -224,7 +224,8 @@ impl EncryptedBackup {
                     .map_err(|_| Error::Descriptor)?;
                 Ok(Decrypted::Descriptor(descriptor))
             }
-            Content::Bip329 | Content::WalletBackup | Content::Bip388 => Err(Error::NotImplemented),
+            Content::WalletBackup => Ok(Decrypted::WalletBackup(bytes)),
+            Content::Bip329 | Content::Bip388 => Err(Error::NotImplemented),
             Content::Unknown => Err(Error::UnknownContent),
         }
     }
