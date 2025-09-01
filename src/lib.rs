@@ -132,6 +132,9 @@ impl EncryptedBackup {
     pub fn get_keys(&self) -> Vec<secp256k1::PublicKey> {
         self.keys.clone()
     }
+    pub fn get_content(&self) -> Content {
+        self.content
+    }
     pub fn set_keys(mut self, keys: Vec<secp256k1::PublicKey>) -> Self {
         self.keys = keys;
         self
