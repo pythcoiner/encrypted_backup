@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use descriptor::descr_to_dpks;
 
+pub use ll::Content;
 use miniscript::{
     bitcoin::{bip32::DerivationPath, secp256k1},
     Descriptor, DescriptorPublicKey,
@@ -39,7 +40,7 @@ impl ToPayload for Vec<u8> {
         Ok(self.clone())
     }
     fn content_type(&self) -> Content {
-        Content::Undefined
+        Content::Unknown
     }
     fn derivation_paths(&self) -> Result<Vec<DerivationPath>, Error> {
         Ok(vec![])
@@ -133,7 +134,7 @@ impl EncryptedBackup {
         self.keys.clone()
     }
     pub fn get_content(&self) -> Content {
-        self.content
+        self.content.clone()
     }
     pub fn set_keys(mut self, keys: Vec<secp256k1::PublicKey>) -> Self {
         self.keys = keys;
@@ -186,7 +187,7 @@ impl EncryptedBackup {
         match (self.encryption, self.version) {
             (Encryption::AesGcm256, Version::V0 | Version::V1) => Ok(ll::encrypt_aes_gcm_256_v1(
                 self.derivation_paths,
-                self.content.into(),
+                self.content.clone(),
                 self.keys,
                 &bytes,
             )?),
@@ -197,16 +198,9 @@ impl EncryptedBackup {
         let version: Version = ll::decode_version(bytes).map(|v| v.into())?;
         match version {
             Version::V0 | Version::V1 => {
-                let (
-                    derivation_paths,
-                    individual_secrets,
-                    content,
-                    encryption_type,
-                    nonce,
-                    cyphertext,
-                ) = ll::decode_v1(bytes)?;
+                let (derivation_paths, individual_secrets, encryption_type, nonce, cyphertext) =
+                    ll::decode_v1(bytes)?;
                 self.derivation_paths = derivation_paths;
-                self.content = content.into();
                 self.encryption = encryption_type.into();
                 self.payload = Payload::DecryptV1 {
                     cyphertext,
@@ -220,16 +214,18 @@ impl EncryptedBackup {
     }
     pub fn extract(content: Content, bytes: Vec<u8>) -> Result<Decrypted, Error> {
         match content {
-            Content::Undefined => Ok(Decrypted::Raw(bytes)),
+            Content::Unknown => Ok(Decrypted::Raw(bytes)),
             Content::Bip380 => {
                 let descr_str = String::from_utf8(bytes).map_err(|_| Error::Utf8)?;
                 let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&descr_str)
                     .map_err(|_| Error::Descriptor)?;
                 Ok(Decrypted::Descriptor(descriptor))
             }
-            Content::WalletBackup => Ok(Decrypted::WalletBackup(bytes)),
-            Content::Bip329 | Content::Bip388 => Err(Error::NotImplemented),
-            Content::Unknown => Err(Error::UnknownContent),
+            Content::None
+            | Content::BIP(_)
+            | Content::Proprietary(_)
+            | Content::Bip329
+            | Content::Bip388 => Err(Error::NotImplemented),
         }
     }
     pub fn decrypt(&self) -> Result<Decrypted, Error> {
@@ -242,40 +238,19 @@ impl EncryptedBackup {
                     nonce,
                 } => {
                     for key in &self.keys {
-                        if let Ok(bytes) = ll::decrypt_aes_gcm_256_v1(
+                        if let Ok((content, bytes)) = ll::decrypt_aes_gcm_256_v1(
                             *key,
                             &individual_secrets.clone(),
                             cyphertext.clone(),
                             *nonce,
                         ) {
-                            return Self::extract(self.content, bytes);
+                            return Self::extract(content, bytes);
                         }
                     }
                     Err(Error::WrongKey)
                 }
             },
             Version::Unknown => Err(Error::UnknownVersion),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, FromPrimitive, IntoPrimitive, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Content {
-    Undefined,
-    Bip380,
-    Bip388,
-    Bip329,
-    WalletBackup,
-    #[num_enum(default)]
-    Unknown = 0xFF,
-}
-
-impl Content {
-    pub fn is_known(&self) -> bool {
-        match self {
-            Content::Undefined | Content::Unknown => false,
-            Content::Bip380 | Content::Bip388 | Content::Bip329 | Content::WalletBackup => true,
         }
     }
 }
@@ -347,7 +322,6 @@ mod tests {
 
     #[test]
     fn test_simple_encrypted_descriptor() {
-        let descriptor = Descriptor::<DescriptorPublicKey>::from_str("<descriptor string>");
         let descriptor = descriptor::tests::descr_1();
         let backp = EncryptedBackup::new().set_payload(&descriptor).unwrap();
         let keys = backp.get_keys();
@@ -359,43 +333,6 @@ mod tests {
             .decrypt()
             .unwrap();
         assert_eq!(restored, Decrypted::Descriptor(descriptor));
-    }
-
-    #[test]
-    fn test_content_to_u8() {
-        let mut u: u8 = Content::Bip380.into();
-        assert_eq!(0x01, u);
-        u = Content::Bip388.into();
-        assert_eq!(0x02, u);
-        u = Content::Bip329.into();
-        assert_eq!(0x03, u);
-        u = Content::WalletBackup.into();
-        assert_eq!(0x04, u);
-
-        u = Content::Undefined.into();
-        assert_eq!(0x00, u);
-
-        u = Content::Unknown.into();
-        assert_eq!(0xFF, u);
-    }
-
-    #[test]
-    fn test_u8_to_content() {
-        let mut c: Content = 0x00u8.into();
-        assert_eq!(c, Content::Undefined);
-        c = 0x01u8.into();
-        assert_eq!(c, Content::Bip380);
-        c = 0x02u8.into();
-        assert_eq!(c, Content::Bip388);
-        c = 0x03u8.into();
-        assert_eq!(c, Content::Bip329);
-        c = 0x04u8.into();
-        assert_eq!(c, Content::WalletBackup);
-
-        for i in 0x05..0xFFu8 {
-            c = i.into();
-            assert_eq!(c, Content::Unknown);
-        }
     }
 
     #[test]

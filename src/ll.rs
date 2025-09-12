@@ -41,11 +41,90 @@ pub enum Error {
     IndividualSecretsLength,
     CypherTextEmpty,
     CypherTextLength,
-    Content,
+    ContentMetadata,
     Encryption,
     OffsetOverflow,
     EmptyBytes,
     Increment,
+    ContentMetadataEmpty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Content {
+    None,
+    Bip380,
+    Bip388,
+    Bip329,
+    BIP(u16),
+    Proprietary(Vec<u8>),
+    Unknown,
+}
+
+/// Encode content metadata, 3 variants:
+/// - <LENGTH == 0> => None
+/// - <LENGTH == 2><BIP_NUMBER> => encoding format defined in BIP<BIP_NUMBER>
+/// - <LENGTH > 2> => proprietary
+impl From<Content> for Vec<u8> {
+    fn from(value: Content) -> Self {
+        match value {
+            Content::None => [0].into(),
+            Content::Proprietary(mut data) => {
+                assert!(data.len() > 2);
+                assert!(data.len() < u8::MAX as usize);
+                let mut content = vec![data.len() as u8];
+                content.append(&mut data);
+                content
+            }
+            Content::Unknown => unimplemented!(),
+            c => {
+                let mut content = vec![2];
+                let bip_number = match c {
+                    Content::Bip380 => 380u16.to_be_bytes(),
+                    Content::Bip388 => 388u16.to_be_bytes(),
+                    Content::Bip329 => 329u16.to_be_bytes(),
+                    Content::BIP(bip) => bip.to_be_bytes(),
+                    _ => unreachable!(),
+                };
+                content.append(&mut bip_number.to_vec());
+                content
+            }
+        }
+    }
+}
+
+pub fn parse_content_metadata(bytes: &[u8]) -> Result<(usize, Content), Error> {
+    let len = bytes.len();
+    if len == 0 {
+        Err(Error::ContentMetadataEmpty)?
+    }
+    let data_len = bytes[0];
+    match data_len {
+        0 => Ok((1, Content::None)),
+        1 => Err(Error::ContentMetadata),
+        2 => {
+            let bip_number = u16::from_be_bytes(bytes[1..3].try_into().expect("len ok"));
+            match bip_number {
+                380 => Ok((3, Content::Bip380)),
+                388 => Ok((3, Content::Bip388)),
+                329 => Ok((3, Content::Bip329)),
+                bip_number => Ok((3, Content::BIP(bip_number))),
+            }
+        }
+        len => {
+            let end = (len + 1) as usize;
+            let data = &bytes[1..end].to_vec();
+            Ok((end, Content::Proprietary(data.to_vec())))
+        }
+    }
+}
+
+impl Content {
+    pub fn is_known(&self) -> bool {
+        match self {
+            Content::None | Content::Unknown | Content::Proprietary(_) => false,
+            Content::Bip380 | Content::Bip388 | Content::Bip329 | Content::BIP(_) => true,
+        }
+    }
 }
 
 pub fn xor(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
@@ -143,7 +222,7 @@ pub fn encode_individual_secrets(individual_secrets: &[[u8; 32]]) -> Result<Vec<
 }
 
 /// Encode following this format:
-/// <TYPE><NONCE><LENGTH><CYPHERTEXT>
+/// <NONCE><LENGTH><CYPHERTEXT>
 pub fn encode_encrypted_payload(nonce: [u8; 12], cyphertext: &[u8]) -> Result<Vec<u8>, Error> {
     if cyphertext.is_empty() {
         return Err(Error::CypherTextEmpty);
@@ -158,14 +237,13 @@ pub fn encode_encrypted_payload(nonce: [u8; 12], cyphertext: &[u8]) -> Result<Ve
 }
 
 /// Encode following this format
-/// <MAGIC><VERSION><DERIVATION_PATHS><INDIVIDUAL_SECRETS><CONTENT><ENCRYPTION><ENCRYPTED_PAYLOAD>
+/// <MAGIC><VERSION><DERIVATION_PATHS><INDIVIDUAL_SECRETS><ENCRYPTION><ENCRYPTED_PAYLOAD>
 /// NOTE: payload that will fail to decode can be encoded with this function, for instance with an
 /// invalid version, the inputs args must be sanitized by the caller.
 pub fn encode_v1(
     version: u8,
     mut derivation_paths: Vec<u8>,
     mut individual_secrets: Vec<u8>,
-    content: u8,
     encryption: u8,
     mut encrypted_payload: Vec<u8>,
 ) -> Vec<u8> {
@@ -177,8 +255,6 @@ pub fn encode_v1(
     out.append(&mut derivation_paths);
     // <INDIVIDUAL_SECRETS>
     out.append(&mut individual_secrets);
-    // <CONTENT>
-    out.push(content);
     // <ENCRYPTION>
     out.push(encryption);
     // <ENCRYPTED_PAYLOAD>
@@ -241,7 +317,7 @@ pub fn decode_derivation_paths(bytes: &[u8]) -> Result<Vec<DerivationPath>, Erro
 }
 
 /// Expects a payload following this format:
-/// <MAGIC><VERSION><DERIVATION_PATHS><INDIVIDUAL_SECRETS><CONTENT><ENCRYPTION><ENCRYPTED_PAYLOAD><..>
+/// <MAGIC><VERSION><DERIVATION_PATHS><INDIVIDUAL_SECRETS><ENCRYPTION><ENCRYPTED_PAYLOAD><..>
 #[allow(clippy::type_complexity)]
 pub fn decode_v1(
     bytes: &[u8],
@@ -249,7 +325,6 @@ pub fn decode_v1(
     (
         Vec<DerivationPath>, /* derivation_paths */
         Vec<[u8; 32]>,       /* individual_secrets */
-        u8,                  /* content */
         u8,                  /* encryption_type */
         [u8; 12],            /* nonce */
         Vec<u8>,             /* cyphertext */
@@ -267,9 +342,6 @@ pub fn decode_v1(
     // <INDIVIDUAL_SECRETS>
     let (incr, individual_secrets) = parse_individual_secrets(&bytes[offset..])?;
     offset = increment_offset(bytes, offset, incr)?;
-    // <CONTENT>
-    let (incr, content) = parse_content(&bytes[offset..])?;
-    offset = increment_offset(bytes, offset, incr)?;
     // <ENCRYPTION>
     let (incr, encryption_type) = parse_encryption(&bytes[offset..])?;
     offset = increment_offset(bytes, offset, incr)?;
@@ -279,7 +351,6 @@ pub fn decode_v1(
     Ok((
         derivation_paths,
         individual_secrets,
-        content,
         encryption_type,
         nonce,
         cyphertext,
@@ -288,7 +359,7 @@ pub fn decode_v1(
 
 pub fn encrypt_aes_gcm_256_v1(
     derivation_paths: Vec<DerivationPath>,
-    content: u8,
+    content_metadata: Content,
     keys: Vec<secp256k1::PublicKey>,
     data: &[u8],
 ) -> Result<Vec<u8>, Error> {
@@ -310,6 +381,11 @@ pub fn encrypt_aes_gcm_256_v1(
         return Err(Error::DataLength);
     }
 
+    let content_metadata: Vec<u8> = content_metadata.into();
+    if content_metadata.is_empty() {
+        return Err(Error::ContentMetadata);
+    }
+
     let mut raw_keys = keys.into_iter().map(|k| k.serialize()).collect::<Vec<_>>();
     raw_keys.sort();
 
@@ -318,14 +394,17 @@ pub fn encrypt_aes_gcm_256_v1(
         encode_individual_secrets(&individual_secrets(&secret, raw_keys.as_slice()))?;
     let derivation_paths = encode_derivation_paths(derivation_paths)?;
 
-    let (nonce, cyphertext) = inner_encrypt(secret, data.to_vec())?;
+    // <PAYLOAD> = <CONTENT_METADATA><DATA>
+    let mut payload = content_metadata;
+    payload.append(&mut data.to_vec());
+
+    let (nonce, cyphertext) = inner_encrypt(secret, payload.to_vec())?;
     let encrypted_payload = encode_encrypted_payload(nonce, cyphertext.as_slice())?;
 
     Ok(encode_v1(
         Version::V1.into(),
         derivation_paths,
         individual_secrets,
-        content,
         Encryption::AesGcm256.into(),
         encrypted_payload,
     ))
@@ -349,7 +428,7 @@ pub fn decrypt_aes_gcm_256_v1(
     individual_secrets: &Vec<[u8; 32]>,
     cyphertext: Vec<u8>,
     nonce: [u8; 12],
-) -> Result<Vec<u8>, Error> {
+) -> Result<(Content, Vec<u8>), Error> {
     let raw_key = key.serialize();
 
     let mut engine = sha256::HashEngine::default();
@@ -360,7 +439,13 @@ pub fn decrypt_aes_gcm_256_v1(
     for ci in individual_secrets {
         let secret = xor(si.as_byte_array(), ci);
         if let Some(out) = try_decrypt_aes_gcm_256(&cyphertext, &secret, nonce) {
-            return Ok(out);
+            let mut offset = init_offset(&out, 0)?;
+            // <CONTENT_METADATA>
+            let (incr, content) = parse_content_metadata(&out)?;
+            // <DECRYPTED_PAYLOAD>
+            offset = increment_offset(&out, offset, incr)?;
+            let out = out[offset..].to_vec();
+            return Ok((content, out));
         }
     }
 
@@ -387,17 +472,9 @@ pub fn parse_version(bytes: &[u8]) -> Result<(usize, u8), Error> {
     Ok((1, version))
 }
 
-pub fn parse_content(bytes: &[u8]) -> Result<(usize, u8), Error> {
-    if bytes.is_empty() {
-        return Err(Error::Content);
-    }
-    let content = bytes[0];
-    Ok((1, content))
-}
-
 pub fn parse_encryption(bytes: &[u8]) -> Result<(usize, u8), Error> {
     if bytes.is_empty() {
-        return Err(Error::Content);
+        return Err(Error::ContentMetadata);
     }
     let encryption = bytes[0];
     Ok((1, encryption))
@@ -607,12 +684,30 @@ mod tests {
 
     #[test]
     fn test_parse_content() {
-        let (_, c) = parse_content(&[0x00]).unwrap();
-        assert_eq!(c, 0x00);
-        let res = parse_content(&[]);
-        assert_eq!(res, Err(Error::Content));
-        let (_, c) = parse_content(&[0x02, 0x01]).unwrap();
-        assert_eq!(c, 0x02);
+        // empty bytes must fail
+        assert!(parse_content_metadata(&[]).is_err());
+        // None
+        let (_, c) = parse_content_metadata(&[0]).unwrap();
+        assert_eq!(c, Content::None);
+        // len == 1 fails
+        assert!(parse_content_metadata(&[1, 0]).is_err());
+        // BIP380
+        let (_, c) = parse_content_metadata(&[2, 0x01, 0x7c]).unwrap();
+        assert_eq!(c, Content::Bip380);
+        // BIP388
+        let (_, c) = parse_content_metadata(&[2, 0x01, 0x84]).unwrap();
+        assert_eq!(c, Content::Bip388);
+        // BIP329
+        let (_, c) = parse_content_metadata(&[2, 0x01, 0x49]).unwrap();
+        assert_eq!(c, Content::Bip329);
+        // Arbitrary BIPs
+        let (_, c) = parse_content_metadata(&[2, 0xFF, 0xFF]).unwrap();
+        assert_eq!(c, Content::BIP(u16::MAX));
+        let (_, c) = parse_content_metadata(&[2, 0, 0]).unwrap();
+        assert_eq!(c, Content::BIP(0));
+        // Proprietary
+        let (_, c) = parse_content_metadata(&[3, 0, 0, 0]).unwrap();
+        assert_eq!(c, Content::Proprietary(vec![0, 0, 0]));
     }
 
     #[test]
@@ -798,26 +893,31 @@ mod tests {
             0x01,
             encode_derivation_paths(vec![DerivationPath::from_str("8/9").unwrap()]).unwrap(),
             [0x01; 33].to_vec(),
-            0x00,
             0x01,
             encode_encrypted_payload([0x04u8; 12], &[0x00]).unwrap(),
         );
+        // <MAGIC>
         let mut expected = MAGIC.as_bytes().to_vec();
+        // <VERSION>
+        expected.append(&mut vec![0x01]);
+        // <DERIVATION_PATHS>
         expected.append(&mut vec![
-            0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x09,
+            0x01, 0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x09,
         ]);
+        // <INDIVIDUAL_SECRETS>
         expected.append(&mut [0x01; 33].to_vec());
-        expected.append(&mut vec![0x00, 0x01]);
+        // <ENCRYPTION>
+        expected.append(&mut vec![0x01]);
+        // <ENCRYPTED_PAYLOAD>
         expected.append(&mut encode_encrypted_payload([0x04u8; 12], &[0x00]).unwrap());
         assert_eq!(bytes, expected);
         let version = decode_version(&bytes).unwrap();
         assert_eq!(version, 0x01);
         let derivs = decode_derivation_paths(&bytes).unwrap();
         assert_eq!(derivs, vec![DerivationPath::from_str("8/9").unwrap()]);
-        let (derivs, secrets, content, encryption, nonce, cyphertext) = decode_v1(&bytes).unwrap();
+        let (derivs, secrets, encryption, nonce, cyphertext) = decode_v1(&bytes).unwrap();
         assert_eq!(derivs, vec![DerivationPath::from_str("8/9").unwrap()]);
         assert_eq!(secrets, vec![[0x01; 32]]);
-        assert_eq!(content, 0x00);
         assert_eq!(encryption, 0x01);
         assert_eq!(nonce, [0x04u8; 12]);
         assert_eq!(cyphertext, vec![0x00]);
@@ -828,17 +928,17 @@ mod tests {
         // Empty keyvector must fail
         let keys = vec![];
         let data = "test".as_bytes().to_vec();
-        let res = encrypt_aes_gcm_256_v1(vec![], 0x00, keys, &data);
+        let res = encrypt_aes_gcm_256_v1(vec![], Content::Bip380, keys, &data);
         assert_eq!(res, Err(Error::KeyCount));
 
         // > 255 keys must fail
         let keys = [pk1(); 256].to_vec();
-        let res = encrypt_aes_gcm_256_v1(vec![], 0x00, keys, &data);
+        let res = encrypt_aes_gcm_256_v1(vec![], Content::Bip380, keys, &data);
         assert_eq!(res, Err(Error::KeyCount));
 
         // Empty payload must fail
         let keys = [pk1()].to_vec();
-        let res = encrypt_aes_gcm_256_v1(vec![], 0x00, keys, &[]);
+        let res = encrypt_aes_gcm_256_v1(vec![], Content::Bip380, keys, &[]);
         assert_eq!(res, Err(Error::DataLength));
 
         // > 255 deriv path must fail
@@ -847,7 +947,7 @@ mod tests {
         for _ in 0..256 {
             deriv_paths.push(DerivationPath::from_str("0/0").unwrap());
         }
-        let res = encrypt_aes_gcm_256_v1(deriv_paths, 0x00, keys, &data);
+        let res = encrypt_aes_gcm_256_v1(deriv_paths, Content::Bip380, keys, &data);
         assert_eq!(res, Err(Error::DerivPathCount));
     }
 
@@ -855,7 +955,7 @@ mod tests {
     fn test_basic_encrypt_decrypt() {
         let keys = vec![pk2(), pk1()];
         let data = "test".as_bytes().to_vec();
-        let bytes = encrypt_aes_gcm_256_v1(vec![], 0x00, keys, &data).unwrap();
+        let bytes = encrypt_aes_gcm_256_v1(vec![], Content::None, keys, &data).unwrap();
 
         let version = decode_version(&bytes).unwrap();
         assert_eq!(version, 1);
@@ -863,16 +963,17 @@ mod tests {
         let deriv_paths = decode_derivation_paths(&bytes).unwrap();
         assert!(deriv_paths.is_empty());
 
-        let (_, individual_secrets, content, encryption_type, nonce, cyphertext) =
+        let (_, individual_secrets, encryption_type, nonce, cyphertext) =
             decode_v1(&bytes).unwrap();
-        assert_eq!(content, 0x00);
         assert_eq!(encryption_type, 0x01);
 
-        let decrypted_1 =
+        let (content, decrypted_1) =
             decrypt_aes_gcm_256_v1(pk1(), &individual_secrets, cyphertext.clone(), nonce).unwrap();
+        assert_eq!(content, Content::None);
         assert_eq!(String::from_utf8(decrypted_1).unwrap(), "test".to_string());
-        let decrypted_2 =
+        let (content, decrypted_2) =
             decrypt_aes_gcm_256_v1(pk2(), &individual_secrets, cyphertext.clone(), nonce).unwrap();
+        assert_eq!(content, Content::None);
         assert_eq!(String::from_utf8(decrypted_2).unwrap(), "test".to_string());
         let decrypted_3 =
             decrypt_aes_gcm_256_v1(pk3(), &individual_secrets, cyphertext.clone(), nonce);
