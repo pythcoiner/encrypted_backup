@@ -4,6 +4,7 @@ pub use mscript_12_0 as miniscript;
 pub use mscript_12_3_5 as miniscript;
 
 use std::collections::{BTreeSet, HashSet};
+use std::str::FromStr;
 
 use miniscript::{
     bitcoin::{self, bip32::DerivationPath, secp256k1},
@@ -33,12 +34,28 @@ fn dpk_to_deriv_path(key: &DescriptorPublicKey) -> Option<DerivationPath> {
     }
 }
 
+// See
+// https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#constructing-and-spending-taproot-outputs:
+// > One example of such a point is H =
+// > lift_x(0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0) which is constructed
+// > by taking the hash of the standard uncompressed encoding of the secp256k1 base point G as X
+// > coordinate.
+fn bip341_nums() -> bitcoin::secp256k1::PublicKey {
+    bitcoin::secp256k1::PublicKey::from_str(
+        "0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0",
+    )
+    .expect("Valid pubkey: NUMS from BIP341")
+}
+
 pub fn descr_to_dpks(
     descriptor: &Descriptor<DescriptorPublicKey>,
 ) -> Result<Vec<DescriptorPublicKey>, Error> {
     let mut keys = BTreeSet::new();
     descriptor.for_each_key(|k| {
-        keys.insert(k.clone());
+        let pk = dpk_to_pk(k);
+        if pk != bip341_nums() {
+            keys.insert(k.clone());
+        }
         true
     });
     let keys: Vec<_> = keys.into_iter().collect();
@@ -125,6 +142,24 @@ pub mod tests {
         let dpks = descr_to_dpks(&descr_1()).unwrap();
         let expected = vec![dpk_1(), dpk_2()];
         assert_eq!(dpks, expected);
+    }
+
+    #[test]
+    fn test_descriptor_to_dpk_unspendable() {
+        let descr_str = "tr(tpubD6NzVbkrYhZ4XWBqjZ7DTB4eFvi8eQZ79UvNbQFsxXiaMNaBn83jpMWTXLX2Gx6JgC5n9jWvx6vnijcAUgxXmRtFd4ntasRGNsYSCvQteSr/<0;1>/*,{and_v(v:and_v(v:pk([d4ab66f1/48'/1'/0'/2']tpubDEXYN145WM4rVKtcWpySBYiVQ229pmrnyAGJT14BBh2QJr7ABJswchDicZfFaauLyXhDad1nCoCZQEwAW87JPotP93ykC9WJvoASnBjYBxW/<2;3>/*),pk([79af2d8a/48'/1'/0'/2']tpubDEtHs6m9crfv1oeETj6EXteAtW7eoSSBVBaypEdWZt8VftbHF9R12xSZpzWGNuAofeGPL6cz48dLdCYbVioHL8ygA56yuPW76Xz5WZ3dt8o/<2;3>/*)),older(52596)),and_v(v:pk([d4ab66f1/48'/1'/0'/2']tpubDEXYN145WM4rVKtcWpySBYiVQ229pmrnyAGJT14BBh2QJr7ABJswchDicZfFaauLyXhDad1nCoCZQEwAW87JPotP93ykC9WJvoASnBjYBxW/<0;1>/*),pk([79af2d8a/48'/1'/0'/2']tpubDEtHs6m9crfv1oeETj6EXteAtW7eoSSBVBaypEdWZt8VftbHF9R12xSZpzWGNuAofeGPL6cz48dLdCYbVioHL8ygA56yuPW76Xz5WZ3dt8o/<0;1>/*))})#vudj49fm";
+        let descriptor = Descriptor::<DescriptorPublicKey>::from_str(descr_str).unwrap();
+        // unspendable keys must have been dropped
+        let keys = descr_to_dpks(&descriptor).unwrap();
+        for key in keys {
+            let pk = dpk_to_pk(&key);
+            assert_ne!(pk, bip341_nums());
+        }
+        // but the descriptor contains unspendable
+        let contains_unspendable = descriptor.for_any_key(|k| {
+            let pk = dpk_to_pk(k);
+            pk == bip341_nums()
+        });
+        assert!(contains_unspendable);
     }
 
     #[test]
