@@ -474,7 +474,7 @@ pub fn parse_version(bytes: &[u8]) -> Result<(usize, u8), Error> {
 
 pub fn parse_encryption(bytes: &[u8]) -> Result<(usize, u8), Error> {
     if bytes.is_empty() {
-        return Err(Error::ContentMetadata);
+        return Err(Error::Encryption);
     }
     let encryption = bytes[0];
     Ok((1, encryption))
@@ -542,10 +542,10 @@ pub fn parse_individual_secrets(
     }
     // <COUNT>
     let count = bytes[0];
-    let mut offset = init_offset(bytes, 1)?;
     if count < 1 {
         return Err(Error::IndividualSecretsEmpty);
     }
+    let mut offset = init_offset(bytes, 1)?;
 
     let mut individual_secrets = BTreeSet::new();
     for _ in 0..count {
@@ -683,6 +683,68 @@ mod tests {
     }
 
     #[test]
+    pub fn test_parse_encryption() {
+        let (l, e) = parse_encryption(&[0]).unwrap();
+        assert_eq!(l, 1);
+        assert_eq!(e, 0);
+        let (l, e) = parse_encryption(&[0, 2]).unwrap();
+        assert_eq!(l, 1);
+        assert_eq!(e, 0);
+        let (l, e) = parse_encryption(&[2, 0]).unwrap();
+        assert_eq!(l, 1);
+        assert_eq!(e, 2);
+        let failed = parse_encryption(&[]).unwrap_err();
+        assert_eq!(failed, Error::Encryption)
+    }
+
+    #[test]
+    pub fn test_parse_derivation_path() {
+        // single deriv path
+        let (_, p) = parse_derivation_paths(&[0x01, 0x01, 0x00, 0x00, 0x00, 0x01]).unwrap();
+        assert_eq!(p.len(), 1);
+
+        // child number must be encoded on 4 bytes
+        let p = parse_derivation_paths(&[0x01, 0x01, 0x00]).unwrap_err();
+        assert_eq!(p, Error::Corrupted);
+        let p = parse_derivation_paths(&[0x01, 0x01, 0x00, 0x00]).unwrap_err();
+        assert_eq!(p, Error::Corrupted);
+        let p = parse_derivation_paths(&[0x01, 0x01, 0x00, 0x00, 0x00]).unwrap_err();
+        assert_eq!(p, Error::Corrupted);
+
+        // empty childs
+        let p = parse_derivation_paths(&[0x01, 0x00]).unwrap_err();
+        assert_eq!(p, Error::DerivPathEmpty);
+    }
+
+    #[test]
+    pub fn test_parse_individual_secrets() {
+        // empty bytes
+        let fail = parse_individual_secrets(&[]).unwrap_err();
+        assert_eq!(fail, Error::EmptyBytes);
+
+        // empty vector
+        let fail = parse_individual_secrets(&[0x00]).unwrap_err();
+        assert_eq!(fail, Error::IndividualSecretsEmpty);
+
+        let is1 = [1u8; 32].to_vec();
+        let is2 = [2u8; 32].to_vec();
+
+        // single secret
+        let mut bytes = vec![0x01];
+        bytes.append(&mut is1.clone());
+        let (_, is) = parse_individual_secrets(&bytes).unwrap();
+        assert_eq!(is[0].to_vec(), is1);
+
+        // multiple secrets
+        let mut bytes = vec![0x02];
+        bytes.append(&mut is1.clone());
+        bytes.append(&mut is2.clone());
+        let (_, is) = parse_individual_secrets(&bytes).unwrap();
+        assert_eq!(is[0].to_vec(), is1);
+        assert_eq!(is[1].to_vec(), is2);
+    }
+
+    #[test]
     fn test_parse_content() {
         // empty bytes must fail
         assert!(parse_content_metadata(&[]).is_err());
@@ -708,6 +770,53 @@ mod tests {
         // Proprietary
         let (_, c) = parse_content_metadata(&[3, 0, 0, 0]).unwrap();
         assert_eq!(c, Content::Proprietary(vec![0, 0, 0]));
+    }
+
+    #[test]
+    fn test_serialize_content() {
+        // Proprietary
+        let mut c = Content::Proprietary(vec![0, 0, 0]);
+        let mut serialized: Vec<u8> = c.into();
+        assert_eq!(serialized, vec![3, 0, 0, 0]);
+        // BIP 380
+        c = Content::Bip380;
+        serialized = c.into();
+        assert_eq!(serialized, vec![0x02, 0x01, 0x7C]);
+        c = Content::BIP(380);
+        serialized = c.into();
+        assert_eq!(serialized, vec![0x02, 0x01, 0x7C]);
+        // BIP 388
+        c = Content::Bip388;
+        serialized = c.into();
+        assert_eq!(serialized, vec![0x02, 0x01, 0x84]);
+        c = Content::BIP(388);
+        serialized = c.into();
+        assert_eq!(serialized, vec![0x02, 0x01, 0x84]);
+        // BIP 329
+        c = Content::Bip329;
+        serialized = c.into();
+        assert_eq!(serialized, vec![0x02, 0x01, 0x49]);
+        c = Content::BIP(329);
+        serialized = c.into();
+        assert_eq!(serialized, vec![0x02, 0x01, 0x49]);
+    }
+
+    #[test]
+    fn test_content_is_known() {
+        let mut c = Content::None;
+        assert!(!c.is_known());
+        c = Content::Unknown;
+        assert!(!c.is_known());
+        c = Content::Proprietary(vec![0, 0, 0]);
+        assert!(!c.is_known());
+        c = Content::Bip380;
+        assert!(c.is_known());
+        c = Content::Bip388;
+        assert!(c.is_known());
+        c = Content::Bip329;
+        assert!(c.is_known());
+        c = Content::BIP(0);
+        assert!(c.is_known());
     }
 
     #[test]
