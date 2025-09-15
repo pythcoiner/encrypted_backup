@@ -88,7 +88,14 @@ pub mod tests {
     use super::*;
     use std::str::FromStr;
 
-    use miniscript::{Descriptor, DescriptorPublicKey};
+    use miniscript::{
+        bitcoin::bip32::{self, ChainCode, ChildNumber, Fingerprint},
+        descriptor::{
+            self, DerivPaths, DescriptorMultiXKey, DescriptorXKey, SinglePub, SinglePubKey,
+            Wildcard,
+        },
+        Descriptor, DescriptorPublicKey, ToPublicKey,
+    };
 
     pub fn descr_1() -> Descriptor<DescriptorPublicKey> {
         let descr_str = "wsh(or_d(pk([58b7f8dc/48'/1'/0'/2']tpubDEPBvXvhta3pjVaKokqC3eeMQnszj9ehFaA2zD5nSdkaccwGAizu8jVB2NeSpvmP2P52MBoZvNCixqXRJnTyXx51FQzARR63tjxQSyP3Btw/<0;1>/*),and_v(v:pkh([58b7f8dc/48'/1'/0'/2']tpubDEPBvXvhta3pjVaKokqC3eeMQnszj9ehFaA2zD5nSdkaccwGAizu8jVB2NeSpvmP2P52MBoZvNCixqXRJnTyXx51FQzARR63tjxQSyP3Btw/<2;3>/*),older(52596))))#pggrcdd0";
@@ -125,6 +132,53 @@ pub mod tests {
         assert_eq!(pk, expected);
         let pk = dpk_to_pk(&dpk_2());
         assert_eq!(pk, expected);
+
+        // Single
+        let single_str = "0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
+        let dpk = DescriptorPublicKey::from_str(single_str).unwrap();
+        let pk = dpk_to_pk(&dpk);
+        let expected = bitcoin::secp256k1::PublicKey::from_str(single_str).unwrap();
+        assert_eq!(expected, pk);
+
+        // Single Xonly
+        let xonly = bitcoin::PublicKey::from_str(single_str)
+            .unwrap()
+            .to_x_only_pubkey();
+        let dpk = DescriptorPublicKey::Single(SinglePub {
+            origin: None,
+            key: descriptor::SinglePubKey::XOnly(xonly),
+        });
+        let pk = dpk_to_pk(&dpk);
+        assert_eq!(expected, pk);
+
+        // Xpub
+        let xpub = bip32::Xpub {
+            network: bitcoin::NetworkKind::Test,
+            depth: 1,
+            parent_fingerprint: Fingerprint::from_str("00000000").unwrap(),
+            child_number: ChildNumber::from_normal_idx(0).unwrap(),
+            public_key: bitcoin::secp256k1::PublicKey::from_str(single_str).unwrap(),
+            chain_code: ChainCode::from(&[1u8; 32]),
+        };
+        let dpk = DescriptorPublicKey::XPub(DescriptorXKey {
+            origin: None,
+            xkey: xpub,
+            derivation_path: DerivationPath::default(),
+            wildcard: Wildcard::None,
+        });
+        let pk = dpk_to_pk(&dpk);
+        assert_eq!(expected, pk);
+
+        // MultiXpub
+        let dpk = DescriptorPublicKey::MultiXPub(DescriptorMultiXKey {
+            origin: None,
+            xkey: xpub,
+            derivation_paths: DerivPaths::new(vec![DerivationPath::from_str("0").unwrap()])
+                .unwrap(),
+            wildcard: Wildcard::None,
+        });
+        let pk = dpk_to_pk(&dpk);
+        assert_eq!(expected, pk);
     }
 
     #[test]
@@ -135,6 +189,68 @@ pub mod tests {
         assert_eq!(deriv_2, DerivationPath::from_str("48'/1'/0'/2'").unwrap());
         let deriv_3 = dpk_to_deriv_path(&dpk_3());
         assert!(deriv_3.is_none());
+
+        let dp = DerivationPath::from_str("0/0").unwrap();
+        let origin = Some((Fingerprint::from_str("aabbccdd").unwrap(), dp.clone()));
+
+        // Single
+        let single_str = "0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
+        let dpk = DescriptorPublicKey::from_str(single_str).unwrap();
+        let none = dpk_to_deriv_path(&dpk);
+        assert!(none.is_none());
+        let single_pk = SinglePubKey::FullKey(dpk_to_pk(&dpk).into());
+        let dpk = DescriptorPublicKey::Single(SinglePub {
+            origin: origin.clone(),
+            key: single_pk,
+        });
+        let deriv = dpk_to_deriv_path(&dpk).unwrap();
+        assert_eq!(deriv, dp);
+
+        // Xpub
+        let xpub = bip32::Xpub {
+            network: bitcoin::NetworkKind::Test,
+            depth: 1,
+            parent_fingerprint: Fingerprint::from_str("00000000").unwrap(),
+            child_number: ChildNumber::from_normal_idx(0).unwrap(),
+            public_key: bitcoin::secp256k1::PublicKey::from_str(single_str).unwrap(),
+            chain_code: ChainCode::from(&[1u8; 32]),
+        };
+        let dpk = DescriptorPublicKey::XPub(DescriptorXKey {
+            origin: None,
+            xkey: xpub,
+            derivation_path: DerivationPath::default(),
+            wildcard: Wildcard::None,
+        });
+        let none = dpk_to_deriv_path(&dpk);
+        assert!(none.is_none());
+        let dpk = DescriptorPublicKey::XPub(DescriptorXKey {
+            origin: origin.clone(),
+            xkey: xpub,
+            derivation_path: DerivationPath::default(),
+            wildcard: Wildcard::None,
+        });
+        let deriv = dpk_to_deriv_path(&dpk).unwrap();
+        assert_eq!(deriv, dp);
+
+        // MultiXpub
+        let dpk = DescriptorPublicKey::MultiXPub(DescriptorMultiXKey {
+            origin: None,
+            xkey: xpub,
+            derivation_paths: DerivPaths::new(vec![DerivationPath::from_str("0").unwrap()])
+                .unwrap(),
+            wildcard: Wildcard::None,
+        });
+        let none = dpk_to_deriv_path(&dpk);
+        assert!(none.is_none());
+        let dpk = DescriptorPublicKey::MultiXPub(DescriptorMultiXKey {
+            origin: origin.clone(),
+            xkey: xpub,
+            derivation_paths: DerivPaths::new(vec![DerivationPath::from_str("0").unwrap()])
+                .unwrap(),
+            wildcard: Wildcard::None,
+        });
+        let deriv = dpk_to_deriv_path(&dpk).unwrap();
+        assert_eq!(deriv, dp);
     }
 
     #[test]
