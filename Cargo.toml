@@ -25,6 +25,7 @@ path = "src/bin/main.rs"
 required-features = ["cli"]
 
 [features]
+default = ["miniscript_latest"]
 miniscript_latest = ["miniscript_12_3_5"]
 miniscript_12_3_5 = ["mscript_12_3_5"]
 miniscript_12_0 = ["mscript_12_0"]

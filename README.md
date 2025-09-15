@@ -78,7 +78,7 @@ let descriptor = EncryptedBackup::new()
 |---------------------|---------|-------------------------------------------------------|
 | `miniscript_12_0`   | –       | Compile against `miniscript` v0.12.0                  |
 | `miniscript_12_3_5` | –       | Compile against `miniscript` v0.12.3.5                |
-| `miniscript_latest` | –       | Alias for `miniscript_12_3_5`                         |
+| `miniscript_latest` | ✓       | Alias for `miniscript_12_3_5`                         |
 | `devices`           | ✓       | Enable automatic enumeration of signing devices.      |
 | `tokio`             | ✓       | Pull in `tokio` runtime used by the `devices`feature. |
 
