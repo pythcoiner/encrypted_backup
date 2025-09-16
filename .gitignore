@@ -1,2 +1,5 @@
 /target
+/coverage
+*.profdata
+*.profraw
 Cargo.lock
