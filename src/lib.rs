@@ -81,7 +81,7 @@ pub enum Decrypted {
     Raw(Vec<u8>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Payload {
     None,
     Encrypt {
@@ -100,7 +100,7 @@ impl Payload {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EncryptedBackup {
     version: Version,
     content: Content,
@@ -135,6 +135,12 @@ impl EncryptedBackup {
     }
     pub fn get_content(&self) -> Content {
         self.content.clone()
+    }
+    pub fn get_version(&self) -> Version {
+        self.version
+    }
+    pub fn get_encryption(&self) -> Encryption {
+        self.encryption
     }
     pub fn set_keys(mut self, keys: Vec<secp256k1::PublicKey>) -> Self {
         self.keys = keys;
@@ -214,21 +220,22 @@ impl EncryptedBackup {
     }
     pub fn extract(content: Content, bytes: Vec<u8>) -> Result<Decrypted, Error> {
         match content {
-            Content::Unknown => Ok(Decrypted::Raw(bytes)),
+            Content::None | Content::Unknown => Ok(Decrypted::Raw(bytes)),
             Content::Bip380 => {
                 let descr_str = String::from_utf8(bytes).map_err(|_| Error::Utf8)?;
                 let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&descr_str)
                     .map_err(|_| Error::Descriptor)?;
                 Ok(Decrypted::Descriptor(descriptor))
             }
-            Content::None
-            | Content::BIP(_)
-            | Content::Proprietary(_)
-            | Content::Bip329
-            | Content::Bip388 => Err(Error::NotImplemented),
+            Content::BIP(_) | Content::Proprietary(_) | Content::Bip329 | Content::Bip388 => {
+                Err(Error::NotImplemented)
+            }
         }
     }
     pub fn decrypt(&self) -> Result<Decrypted, Error> {
+        if self.keys.is_empty() {
+            return Err(Error::NoKey);
+        }
         match self.version {
             Version::V0 | Version::V1 => match &self.payload {
                 Payload::None | Payload::Encrypt { .. } => Err(Error::WrongPayload),
@@ -294,7 +301,7 @@ impl Version {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Ll(ll::Error),
     Utf8,
@@ -305,6 +312,7 @@ pub enum Error {
     InvalidVersion,
     WrongPayload,
     UnknownVersion,
+    NoKey,
     WrongKey,
     DescriptorHasNoKeys,
     String(Box<String>),
@@ -318,6 +326,10 @@ impl From<ll::Error> for Error {
 
 #[cfg(test)]
 mod tests {
+    use miniscript::bitcoin;
+
+    use crate::descriptor::dpk_to_pk;
+
     use super::*;
 
     #[test]
@@ -333,6 +345,143 @@ mod tests {
             .decrypt()
             .unwrap();
         assert_eq!(restored, Decrypted::Descriptor(descriptor));
+    }
+
+    #[test]
+    fn test_encrypt_bytes() {
+        let payload = vec![0x00u8, 0x00, 0x00];
+        let mut backp = EncryptedBackup::new().set_payload(&payload).unwrap();
+        assert!(!backp.payload.is_none());
+
+        assert!(backp.get_keys().is_empty());
+        let pk1 = dpk_to_pk(&descriptor::tests::dpk_1());
+        backp = backp.set_keys(vec![pk1]);
+        let pks = backp.get_keys();
+        assert_eq!(pks.len(), 1);
+        assert_eq!(*pks.first().unwrap(), pk1);
+
+        assert!(backp.get_derivation_paths().is_empty());
+        let deriv = DerivationPath::from_str("0/0").unwrap();
+        backp = backp.set_derivation_paths(vec![deriv.clone()]);
+        assert_eq!(backp.get_derivation_paths(), vec![deriv]);
+
+        assert_eq!(backp.get_content(), Content::Unknown);
+        let fail = backp.clone().encrypt().unwrap_err();
+        assert_eq!(fail, Error::UnknownContent);
+        backp = backp.set_content_type(Content::None);
+        assert_eq!(backp.get_content(), Content::None);
+
+        assert_eq!(backp.get_encryption(), Encryption::AesGcm256);
+        backp = backp.set_encryption(Encryption::Undefined);
+        assert_eq!(backp.get_encryption(), Encryption::Undefined);
+        let fail = backp.clone().encrypt().unwrap_err();
+        assert_eq!(fail, Error::EncryptionUndefined);
+        backp = backp.set_encryption(Encryption::AesGcm256);
+        assert_eq!(backp.get_encryption(), Encryption::AesGcm256);
+
+        backp = backp.set_version(Version::Unknown);
+        let fail = backp.clone().encrypt().unwrap_err();
+        assert_eq!(fail, Error::InvalidVersion);
+        backp = backp.set_version(Version::V0);
+        assert_eq!(backp.get_version(), Version::V0);
+        backp = backp.set_version(Version::V1);
+        assert_eq!(backp.get_version(), Version::V1);
+
+        let bytes = backp.encrypt().unwrap();
+
+        let fail = EncryptedBackup::new()
+            .set_encrypted_payload(&bytes)
+            .unwrap()
+            .decrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::NoKey);
+
+        let w_key = bitcoin::secp256k1::PublicKey::from_slice(&[
+            4, 54, 57, 149, 239, 162, 148, 175, 246, 254, 239, 75, 154, 152, 10, 82, 234, 224, 85,
+            220, 40, 100, 57, 121, 30, 162, 94, 156, 135, 67, 74, 49, 179, 57, 236, 53, 162, 124,
+            149, 144, 168, 77, 74, 30, 72, 211, 229, 110, 111, 55, 96, 193, 86, 227, 183, 152, 195,
+            155, 51, 247, 123, 113, 60, 228, 188,
+        ])
+        .unwrap();
+        let fail = EncryptedBackup::new()
+            .set_encrypted_payload(&bytes)
+            .unwrap()
+            .set_keys(vec![w_key])
+            .decrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::WrongKey);
+
+        let restored = EncryptedBackup::new()
+            .set_encrypted_payload(&bytes)
+            .unwrap()
+            .set_keys(vec![pk1])
+            .decrypt()
+            .unwrap();
+        assert_eq!(restored, Decrypted::Raw(vec![0x00u8, 0x00, 0x00]));
+    }
+
+    pub fn dummy_encrypted_payload() -> Vec<u8> {
+        let key = dpk_to_pk(&descriptor::tests::dpk_1());
+        EncryptedBackup::new()
+            .set_payload(&vec![0x00])
+            .unwrap()
+            .set_keys(vec![key])
+            .set_content_type(Content::None)
+            .encrypt()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_encrypt_wrong_payload() {
+        // No payload
+        let fail = EncryptedBackup::new()
+            .set_content_type(Content::None)
+            .encrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::WrongPayload);
+
+        let dummy_payload = dummy_encrypted_payload();
+
+        // wrong payload
+        let fail = EncryptedBackup::new()
+            .set_encrypted_payload(&dummy_payload)
+            .unwrap()
+            .set_content_type(Content::None)
+            .encrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::WrongPayload);
+    }
+
+    #[test]
+    fn test_decrypt_wrong_payload() {
+        let key = dpk_to_pk(&descriptor::tests::dpk_1());
+        // No payload
+        let fail = EncryptedBackup::new()
+            .set_keys(vec![key])
+            .decrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::WrongPayload);
+
+        // wrong payload
+        let fail = EncryptedBackup::new()
+            .set_keys(vec![key])
+            .set_payload(&vec![0x00])
+            .unwrap()
+            .decrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::WrongPayload);
+
+        let dummy = dummy_encrypted_payload();
+
+        // unknown version
+        let fail = EncryptedBackup::new()
+            .set_keys(vec![key])
+            .set_encrypted_payload(&dummy)
+            .unwrap()
+            .set_version(Version::Unknown)
+            .decrypt()
+            .unwrap_err();
+        assert_eq!(fail, Error::UnknownVersion);
     }
 
     #[test]

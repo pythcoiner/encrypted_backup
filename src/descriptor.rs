@@ -103,7 +103,7 @@ pub mod tests {
         Descriptor::<DescriptorPublicKey>::from_str(descr_str).unwrap()
     }
 
-    fn dpk_1() -> DescriptorPublicKey {
+    pub fn dpk_1() -> DescriptorPublicKey {
         let dpk_str = "[58b7f8dc/48'/1'/0'/2']tpubDEPBvXvhta3pjVaKokqC3eeMQnszj9ehFaA2zD5nSdkaccwGAizu8jVB2NeSpvmP2P52MBoZvNCixqXRJnTyXx51FQzARR63tjxQSyP3Btw/<0;1>/*";
         DescriptorPublicKey::from_str(dpk_str).unwrap()
     }
