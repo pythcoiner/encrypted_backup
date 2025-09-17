@@ -6,6 +6,18 @@ Devices are **not mandatory**; you can use the tool completely off-device.
 
 ## CLI
 
+To build the cli without device support:
+
+```
+cargo build --bin beb --release --no-default-features --features="cli"
+```
+
+or with devices support:
+
+```
+cargo build --bin beb --release --no-default-features --features="cli,devices"
+```
+
 ```
 $ beb --help
 Usage: beb <COMMAND>

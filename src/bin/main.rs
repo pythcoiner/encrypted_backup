@@ -6,6 +6,8 @@ pub use mscript_12_3_5 as miniscript;
 use clap::Parser;
 use clap::Subcommand;
 
+use bitcoin_encrypted_backup as encrypted_backup;
+
 use encrypted_backup::Decrypted;
 use encrypted_backup::EncryptedBackup;
 use miniscript::descriptor::DescriptorKeyParseError;
@@ -195,9 +197,16 @@ async fn main() -> Result<(), CliError> {
             let backup = EncryptedBackup::new()
                 .set_encrypted_payload(&data)
                 .map_err(CliError::FailedToDecrypt)?;
-            let deriv_paths = backup.get_derivation_paths();
 
-            let mut keys = encrypted_backup::signing_devices::collect_xpubs(deriv_paths).await;
+            #[cfg(feature = "devices")]
+            let mut keys = {
+                let deriv_paths = backup.get_derivation_paths();
+                encrypted_backup::signing_devices::collect_xpubs(deriv_paths).await
+            };
+
+            #[cfg(not(feature = "devices"))]
+            let mut keys = vec![];
+
             if let Some(k) = key {
                 keys.push(k);
             }
