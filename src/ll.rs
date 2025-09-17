@@ -17,7 +17,7 @@ use miniscript::bitcoin::{
 };
 use rand::{rngs::OsRng, TryRngCore};
 
-use crate::{Encryption, Version};
+use crate::{descriptor::bip341_nums, Encryption, Version};
 
 const DECRYPTION_SECRET: &str = "BEB_BACKUP_DECRYPTION_SECRET";
 const INDIVIDUAL_SECRET: &str = "BEB_BACKUP_INDIVIDUAL_SECRET";
@@ -363,7 +363,19 @@ pub fn encrypt_aes_gcm_256_v1(
     keys: Vec<secp256k1::PublicKey>,
     data: &[u8],
 ) -> Result<Vec<u8>, Error> {
-    // TODO: drop duplictaes in derivation_paths & keys
+    // drop duplicates keys and sort out bip341 nums
+    let keys = keys
+        .into_iter()
+        .filter(|k| *k != bip341_nums())
+        .collect::<BTreeSet<_>>();
+
+    // drop duplicates derivation paths
+    let derivation_paths = derivation_paths
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
     if keys.len() > u8::MAX as usize || keys.is_empty() {
         return Err(Error::KeyCount);
     }
@@ -588,6 +600,8 @@ pub fn parse_encrypted_payload(
 #[cfg(test)]
 mod tests {
     use aes_gcm::aead::{rand_core::RngCore, OsRng};
+    use miniscript::bitcoin::XOnlyPublicKey;
+    use rand::random;
 
     use super::*;
     use std::str::FromStr;
@@ -1041,7 +1055,18 @@ mod tests {
         assert_eq!(res, Err(Error::KeyCount));
 
         // > 255 keys must fail
-        let keys = [pk1(); 256].to_vec();
+        let mut keys = BTreeSet::new();
+        while keys.len() < 256 {
+            let key: [u8; 32] = random();
+            if let Ok(k) = XOnlyPublicKey::from_slice(&key) {
+                let k = bitcoin::secp256k1::PublicKey::from_x_only_public_key(
+                    k,
+                    secp256k1::Parity::Odd,
+                );
+                keys.insert(k);
+            }
+        }
+        let keys = keys.into_iter().collect::<Vec<_>>();
         let res = encrypt_aes_gcm_256_v1(vec![], Content::Bip380, keys, &data);
         assert_eq!(res, Err(Error::KeyCount));
 
@@ -1052,10 +1077,15 @@ mod tests {
 
         // > 255 deriv path must fail
         let keys = [pk1()].to_vec();
-        let mut deriv_paths = vec![];
-        for _ in 0..256 {
-            deriv_paths.push(DerivationPath::from_str("0/0").unwrap());
+        let mut deriv_paths = BTreeSet::new();
+        while deriv_paths.len() < 256 {
+            let raw_deriv: [u32; 4] = random();
+            let childs: Vec<ChildNumber> =
+                raw_deriv.iter().copied().map(ChildNumber::from).collect();
+            let deriv: DerivationPath = childs.into();
+            deriv_paths.insert(deriv);
         }
+        let deriv_paths = deriv_paths.into_iter().collect();
         let res = encrypt_aes_gcm_256_v1(deriv_paths, Content::Bip380, keys, &data);
         assert_eq!(res, Err(Error::DerivPathCount));
     }

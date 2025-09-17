@@ -40,7 +40,7 @@ fn dpk_to_deriv_path(key: &DescriptorPublicKey) -> Option<DerivationPath> {
 // > lift_x(0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0) which is constructed
 // > by taking the hash of the standard uncompressed encoding of the secp256k1 base point G as X
 // > coordinate.
-fn bip341_nums() -> bitcoin::secp256k1::PublicKey {
+pub fn bip341_nums() -> bitcoin::secp256k1::PublicKey {
     bitcoin::secp256k1::PublicKey::from_str(
         "0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0",
     )
