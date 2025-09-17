@@ -6,6 +6,8 @@ Devices are **not mandatory**; you can use the tool completely off-device.
 
 ## CLI
 
+### Build
+
 To build the cli without device support:
 
 ```
@@ -17,6 +19,13 @@ or with devices support:
 ```
 cargo build --bin beb --release --no-default-features --features="cli,devices"
 ```
+
+Note: if a signing device supported by
+[`async-hwi`](https://github.com/wizardsardine/async-hwi) is connected and unlocked,
+the CLI will automatically try to fetch a set of xpubs from it.
+
+
+### Usage:
 
 ```
 $ beb --help
@@ -56,11 +65,6 @@ Options:
   -h, --help             Print help
 
 ```
-
-Note: if a signing device supported by
-[`async-hwi`](https://github.com/wizardsardine/async-hwi) is connected and unlocked,
-the CLI will automatically try to fetch a set of xpubs from it.
-
 ## Library usage
 
 ### Encryption
@@ -91,7 +95,7 @@ let descriptor = EncryptedBackup::new()
 | `miniscript_12_0`   | –       | Compile against `miniscript` v0.12.0                  |
 | `miniscript_12_3_5` | –       | Compile against `miniscript` v0.12.3.5                |
 | `miniscript_latest` | ✓       | Alias for `miniscript_12_3_5`                         |
-| `devices`           | ✓       | Enable automatic enumeration of signing devices.      |
+| `devices`           | -       | Enable automatic enumeration of signing devices.      |
 | `tokio`             | ✓       | Pull in `tokio` runtime used by the `devices`feature. |
 
 
