@@ -1,7 +1,12 @@
 [package]
-name = "encrypted_backup"
-version = "0.1.0"
+name = "bitcoin-encrypted-backup"
+version = "0.0.1"
 edition = "2021"
+readme = "README.md"
+description = "Bitcoin Encrypted Backup"
+documentation = "https://docs.rs/bitcoin-encrypted-backup"
+license-file = "LICENSE"
+repository = "https://github.com/pythcoiner/encrypted_backup"
 
 [dependencies]
 aes-gcm = "0.10.3"
